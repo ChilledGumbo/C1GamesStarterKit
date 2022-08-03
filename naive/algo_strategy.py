@@ -43,7 +43,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         SP = 0
         # This is a good place to do initial setup
         self.scored_on_locations = []
-        self.mem = {"attack": 0, "deaths": [], "priority_repair": [], "useful": [], "opp_mp": 0, "tmp_breach_locs": {}, "breach_locs": {}, "opp_attack_mp": []}
+        self.mem = {"last_attack": "D", "deaths": [], "priority_repair": [], "useful": []}
 
     def on_turn(self, turn_state):
         """
@@ -57,7 +57,6 @@ class AlgoStrategy(gamelib.AlgoCore):
         #game_state.attempt_spawn(DEMOLISHER, [24, 10], 3)
         gamelib.debug_write('Turn {}'.format(game_state.turn_number))
         game_state.suppress_warnings(True)  #Comment or remove this line to enable warnings.
-        self.mem["opp_mp"] = game_state.get_resource(1, 1)
         self.starter_strategy(game_state)
 
         game_state.submit_turn()
@@ -75,106 +74,73 @@ class AlgoStrategy(gamelib.AlgoCore):
         For offense we will use long range demolishers if they place stationary units near the enemy's front.
         If there are no stationary units to attack in the front, we will send Scouts to try and score quickly.
         """
+        gamelib.debug_write(self.mem)
         # builing-related stuff
         if game_state.turn_number < 5:
             gamelib.debug_write("building up initial defences")
             self.build_defences(game_state)
         else:
-            self.build_reactive_defense(game_state)
             self.priority_repair(game_state)
-            self.build_defences(game_state)
-        
-        thwart_zone = [[1, 12], [2, 11], [3, 10], [4, 9], [5, 8], [6, 7], [7, 6],
-                       [20, 6], [8, 5], [19, 5], [9, 4], [18, 4], [10, 3], [17, 3],
-                       [11, 2], [16, 2], [12, 1], [15, 1], [13, 0], [14, 0]]
-        gamelib.debug_write(f"breach_locs: {self.mem['breach_locs']}")
-        for breach_loc in self.mem["breach_locs"]:
-            gamelib.debug_write(f"breach: {breach_loc}")
-            if self.mem["breach_locs"][breach_loc][0] in thwart_zone:
-                gamelib.debug_write("breach in zone")
-                c = 0
-                for e in self.mem["opp_attack_mp"]:
-                    if abs(e[0] - self.mem["breach_locs"][breach_loc][2]) < 2:
-                        e[1] = True
-                        c += 1
-                        gamelib.debug_write("breach pattern confirmed")
-                if c == 0: self.mem["opp_attack_mp"].append([self.mem["breach_locs"][breach_loc][2], False])
-        self.mem["breach_locs"] = {}
-        thwart = False
-
-        for mp in self.mem["opp_attack_mp"]:
-            if abs(self.mem["opp_mp"] - mp[0]) < 2 and mp[1]:
-                gamelib.debug_write("thwart true")
-                thwart = True
+            if game_state.turn_number % 2 == 0:
+                self.build_defences(game_state)
 
         #if game_state.turn_number > 8:
         #    if game_state.turn_number % 2 == 0:
         #        self.remove_useless(game_state)
         # Now build reactive defenses based on where the enemy scored
-        
+        self.build_reactive_defense(game_state)
         # First, place basic defenses
         
         # attacking-related stuff
         # If the turn is less than 5, stall with interceptors and wait to see enemy's base
-        
-        # Now let's analyze the enemy base to see where their defenses are concentrated.
-        # If they have many units in the front we can build a line for our demolishers to attack them at long range.
-        #if self.detect_enemy_unit(game_state, unit_type=None, valid_x=None, valid_y=[14, 15]) > 10:
-        #self.demolisher_line_strategy(game_state)
-    
-        # They don't have many units in the front so lets figure out their least defended area and send Scouts there.
+        if game_state.turn_number < 5:
+            #self.stall_with_interceptors(game_state)
+            pass
+        else:
+            # Now let's analyze the enemy base to see where their defenses are concentrated.
+            # If they have many units in the front we can build a line for our demolishers to attack them at long range.
+            #if self.detect_enemy_unit(game_state, unit_type=None, valid_x=None, valid_y=[14, 15]) > 10:
+                #self.demolisher_line_strategy(game_state)
+            
+                # They don't have many units in the front so lets figure out their least defended area and send Scouts there.
 
-        # Only spawn Scouts every other turn
-        # Sending more at once is better since attacks can only hit a single scout at a time
+                # Only spawn Scouts every other turn
+                # Sending more at once is better since attacks can only hit a single scout at a time
 
-        if thwart:
+            if game_state.get_resources()[1] > 25:
 
-            self.thwart(game_state)
-            gamelib.debug_write("thwart attempt")
-            return
+                game_state.attempt_spawn(DEMOLISHER, [22, 8], 3)
+                scout_spawn_location_options = [[13, 0], [14, 0], [15, 1]]
+                best_location = self.least_damage_spawn_location(game_state, scout_spawn_location_options)
+                game_state.attempt_spawn(SCOUT, best_location, 1000)
+            
+            pass
 
-        if game_state.number_affordable(SCOUT) > 16 and self.mem["attack"] == 0:
+            if game_state.number_affordable(SCOUT) > 15 and self.mem["last_attack"] == "D":
+                    # To simplify we will just check sending them from back left and right
+                scout_spawn_location_options = [[13, 0], [14, 0], [15, 1]]
+                best_location = self.least_damage_spawn_location(game_state, scout_spawn_location_options)
+                game_state.attempt_spawn(SCOUT, best_location, 1000)
+                self.mem["last_attack"] == "S"
 
-            game_state.attempt_spawn(DEMOLISHER, [19, 5], 3)
-            #scout_spawn_location_options = [[18, 4]]
-            #best_location = self.least_damage_spawn_location(game_state, scout_spawn_location_options)
-            #game_state.attempt_spawn(SCOUT, best_location, 1000)
-            self.mem["attack"] = 1
-        
-        elif game_state.number_affordable(SCOUT) > 8 and self.mem["attack"] == 1:
-
-            #scout_spawn_location_options = [[19, 5]]
-            #best_location = self.least_damage_spawn_location(game_state, scout_spawn_location_options)
-            game_state.attempt_spawn(SCOUT, [19, 5], 1000)
-            self.mem["attack"] = 0
-
-        #if game_state.number_affordable(SCOUT) > 15 and self.mem["last_attack"] == "D":
-        #        # To simplify we will just check sending them from back left and right
-        #    scout_spawn_location_options = [[13, 0], [14, 0], [15, 1]]
-        #    best_location = self.least_damage_spawn_location(game_state, scout_spawn_location_options)
-        #    game_state.attempt_spawn(SCOUT, best_location, 1000)
-        #    self.mem["last_attack"] == "S"
-
-        #elif game_state.number_affordable(DEMOLISHER) > 5 and self.mem["last_attack"] == "S":
-        #    game_state.attempt_spawn(DEMOLISHER, [15, 1], 5)
-        #    self.mem["last_attack"] == "D"
-            # Lastly, if we have spare SP, let's build some supports
-            #support_locations = [[13, 2], [14, 2], [13, 3], [14, 3]]
-            #game_state.attempt_spawn(SUPPORT, support_locations)
-
-    def thwart(self, game_state):
-
-        game_state.attempt_spawn(INTERCEPTOR, [[7, 6], [8, 5]], 2)
-        game_state.attempt_spawn(DEMOLISHER, [19, 5], 1)
+            elif game_state.number_affordable(DEMOLISHER) > 5 and self.mem["last_attack"] == "S":
+                game_state.attempt_spawn(DEMOLISHER, [15, 1], 5)
+                self.mem["last_attack"] == "D"
+                # Lastly, if we have spare SP, let's build some supports
+                #support_locations = [[13, 2], [14, 2], [13, 3], [14, 3]]
+                #game_state.attempt_spawn(SUPPORT, support_locations)
 
     def priority_repair(self, game_state):
+
+        gamelib.debug_write("priority repair of following destroyed units: ")
+        gamelib.debug_write(self.mem["priority_repair"])
         
         # replace destroyed units
         for unit in self.mem["priority_repair"]:
             if game_state.can_spawn(unit[1], unit[0]): 
                 game_state.attempt_spawn(unit[1], unit[0])
                 self.mem["priority_repair"].remove(unit)
-            #if unit[1] == WALL:
+            if unit[1] == WALL:
                 game_state.attempt_upgrade(unit[0])
 
     def remove_useless(self, game_state):
@@ -193,33 +159,25 @@ class AlgoStrategy(gamelib.AlgoCore):
         # More community tools available at: https://terminal.c1games.com/rules#Download
 
         # Place turrets that attack enemy units
-        turret_locations = [[3, 12], [1, 12], [2, 12], [26, 12], [4, 11], [6, 9], [7, 8], [6, 10], [6, 11]]
+        turret_locations = [[1, 12], [3, 12], [6, 12], [8, 12], [11, 12], [16, 12], [19, 12],
+                            [22, 12], [23, 12], [24, 12], [26, 12], [12, 11], [15, 11], [12, 10], [15, 10]]
         # attempt_spawn will try to spawn units if we have resources, and will check if a blocking unit is already there
+        game_state.attempt_spawn(TURRET, turret_locations)
         
         # Place walls in front of turrets to soak up damage for them
-        wall_locations = [[0, 13], [1, 13], [2, 13], [3, 13], [4, 13], [26, 13], [27, 13], [4, 12], [7, 11], [25, 11],
-                          [7, 10], [24, 10], [7, 9], [23, 9], [8, 8], [22, 8], [8, 7], [9, 7],
-                          [10, 7], [11, 7], [12, 7], [13, 7], [14, 7], [15, 7], [16, 7], [17, 7],
-                          [18, 7], [19, 7], [20, 7], [21, 7], [7, 12]]
+        wall_locations = [[0, 13], [1, 13], [2, 13], [3, 13], [4, 13], [5, 13], [6, 13], [7, 13], [8, 13],
+                          [9, 13], [10, 13], [11, 13], [12, 13], [15, 13], [16, 13], [17, 13], [18, 13],
+                          [19, 13], [20, 13], [21, 13], [22, 13], [23, 13], [24, 13], [26, 13], [27, 13],
+                          [12, 12], [15, 12], [23, 11], [22, 10], [21, 9], [20, 8], [19, 7], [18, 6], [17, 5], [16, 4]]
 
-        support_locations = [[9, 6], [10, 6], [11, 6], [12, 6], [10, 5], [11, 5], [12, 5]]
-
-        walls_to_upgrade = [[0, 13], [1, 13], [2, 13], [3, 13], [26, 13], [27, 13], [4, 13], [4, 12], [7, 11], [7, 10], [7, 12]]
-        turrets_to_upgrade = [[26, 12], [6, 9], [4, 11], [3, 12], [7, 8], [16, 10], [7, 9], [6, 11], [6, 10]]
-        supports_to_upgrade = [[10, 5], [11, 5], [12, 5], [9, 6], [10, 6], [11, 6], [12, 6]]
+        support_locations = [[14, 4], [15, 4], [13, 3], [14, 3], [15, 3], [12, 2], [13, 2], [14, 2], [12, 1], [13, 1]]
 
         game_state.attempt_spawn(WALL, wall_locations)
-        game_state.attempt_spawn(TURRET, turret_locations)
         game_state.attempt_spawn(SUPPORT, support_locations)
-
-        game_state.attempt_upgrade(turrets_to_upgrade)
-        game_state.attempt_upgrade(walls_to_upgrade)
-        game_state.attempt_upgrade(supports_to_upgrade)
-
         # upgrade walls so they soak more damage
-        #if game_state.get_resources()[0] > 5:
-        #    gamelib.debug_write("wall upgrades")
-        #    game_state.attempt_upgrade(wall_locations)
+        if game_state.get_resources()[0] > 5:
+            gamelib.debug_write("wall upgrades")
+            game_state.attempt_upgrade(wall_locations)
 
     def build_reactive_defense(self, game_state):
         """
@@ -228,10 +186,9 @@ class AlgoStrategy(gamelib.AlgoCore):
         as shown in the on_action_frame function
         """
 
-        no_zone = [[1, 13], [1, 12], [2, 12], [2, 11], [3, 11], [5, 11], [3, 10], [4, 10], [5, 10],
-                   [4, 9], [5, 9], [5, 8], [6, 8], [6, 7], [7, 7], [7, 6], [8, 6], [8, 5], [9, 5],
-                   [9, 4], [10, 4], [10, 3], [11, 3], [11, 2], [12, 2], [12, 1], [13, 1], [14, 1],
-                   [15, 1], [13, 0], [14, 0]]
+        no_zone = [[25, 13], [25, 12], [24, 11], [25, 11], [23, 10], [24, 10], [22, 9], [23, 9], [21, 8],
+                   [22, 8], [20, 7], [21, 7], [19, 6], [20, 6], [18, 5], [19, 5], [17, 4], [18, 4], [16, 3],
+                   [17, 3], [15, 2], [16, 2], [14, 1], [15, 1], [13, 0], [14, 0]]
         for location in self.scored_on_locations:
             bls = [[location[0], location[1]+2], [location[0]+2, location[1]], [location[0]-2, location[1]]]
             for build_location in bls:
@@ -333,8 +290,10 @@ class AlgoStrategy(gamelib.AlgoCore):
         #for death in events["death"]:
         #    if death[3] == 1:
         #        self.mem["deaths"].append(death)
+        gamelib.debug_write(events["death"])
         for death in events["death"]:
             if (death[1] in [0, 2]) and death[3] == 1 and not death[4]:
+                gamelib.debug_write("added to priority repair")
                 self.mem["priority_repair"].append([death[0], WALL if death[1] == 0 else TURRET])
 
         for attack in events["attack"]:
@@ -349,13 +308,7 @@ class AlgoStrategy(gamelib.AlgoCore):
             if not unit_owner_self:
                 #gamelib.debug_write("Got scored on at: {}".format(location))
                 self.scored_on_locations.append(location)
-                self.mem["tmp_breach_locs"].setdefault(f"{location[0]},{location[1]}", [location, 0, self.mem["opp_mp"]])
-                self.mem["tmp_breach_locs"][f"{location[0]},{location[1]}"][1] += breach[1]
                 #gamelib.debug_write("All locations: {}".format(self.scored_on_locations))
-        
-        self.mem["breach_locs"] = self.mem["tmp_breach_locs"]
-        self.mem["tmp_breach_locs"] = {}
-
 
 
 if __name__ == "__main__":
